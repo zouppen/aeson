@@ -81,7 +81,7 @@ bool x = B.char7 $ if x then 't' else 'f'
 array :: V.Vector Value -> Builder
 array v
   | V.null v  = emptyArray_
-  | otherwise = B.char8 '[' <>
+  | otherwise = B.char8 'a' <>
                 encodeToBuilder (V.unsafeHead v) <>
                 V.foldr withComma rs (V.unsafeTail v)
   where
@@ -90,7 +90,7 @@ array v
 -- Encode a JSON object.
 object :: HMS.HashMap T.Text Value -> Builder
 object m = case HMS.toList m of
-    (x:xs) -> B.char8 '{' <> one x <> foldr withComma rs xs
+    (x:xs) -> B.char8 'o' <> one x <> foldr withComma rs xs
     _      -> emptyObject_
   where
     withComma a z = one a <> z
