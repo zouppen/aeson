@@ -69,12 +69,11 @@ encodeToBuilder (Object m) = object m
 
 -- | Encode a JSON null.
 null_ :: Builder
-null_ = BP.primBounded (ascii4 ('n',('u',('l','l')))) ()
+null_ = B.char7 'n'
 
 -- | Encode a JSON boolean.
 bool :: Bool -> Builder
-bool = BP.primBounded (BP.condB id (ascii4 ('t',('r',('u','e'))))
-                                   (ascii5 ('f',('a',('l',('s','e'))))))
+bool x = B.char7 $ if x then 't' else 'f'
 
 -- | Encode a JSON array.
 array :: V.Vector Value -> Builder
@@ -82,22 +81,26 @@ array v
   | V.null v  = emptyArray_
   | otherwise = B.char8 '[' <>
                 encodeToBuilder (V.unsafeHead v) <>
-                V.foldr withComma (B.char8 ']') (V.unsafeTail v)
+                V.foldr withComma (B.char8 '"') (V.unsafeTail v)
   where
-    withComma a z = B.char8 ',' <> encodeToBuilder a <> z
+    withComma a z = encodeToBuilder a <> z
 
 -- Encode a JSON object.
 object :: HMS.HashMap T.Text Value -> Builder
 object m = case HMS.toList m of
-    (x:xs) -> B.char8 '{' <> one x <> foldr withComma (B.char8 '}') xs
+    (x:xs) -> B.char8 '{' <> one x <> foldr withComma (B.char8 '"') xs
     _      -> emptyObject_
   where
-    withComma a z = B.char8 ',' <> one a <> z
-    one (k,v)     = text k <> B.char8 ':' <> encodeToBuilder v
+    withComma a z = one a <> z
+    one (k,v)     = key k <> encodeToBuilder v
+
+-- | Encode a JSON string for object key (has implicit start)
+key :: T.Text -> Builder
+key t = unquoted t <> B.char8 '"'
 
 -- | Encode a JSON string.
 text :: T.Text -> Builder
-text t = B.char8 '"' <> unquoted t <> B.char8 '"'
+text t = B.char8 's' <> unquoted t <> B.char8 '"'
 
 -- | Encode a JSON string, without enclosing quotes.
 unquoted :: T.Text -> Builder
@@ -105,11 +108,11 @@ unquoted = encodeUtf8BuilderEscaped escapeAscii
 
 -- | Add quotes surrounding a builder
 quote :: Builder -> Builder
-quote b = B.char8 '"' <> b <> B.char8 '"'
+quote b = B.char8 's' <> b <> B.char8 '"'
 
 -- | Encode a JSON string.
 string :: String -> Builder
-string t = B.char8 '"' <> BP.primMapListBounded go t <> B.char8 '"'
+string t = B.char8 's' <> BP.primMapListBounded go t <> B.char8 '"'
   where go = BP.condB (> '\x7f') BP.charUtf8 (c2w >$< escapeAscii)
 
 escapeAscii :: BP.BoundedPrim Word8
@@ -126,6 +129,9 @@ escapeAscii =
     hexEscape = (\c -> ('\\', ('u', fromIntegral c))) BP.>$<
         BP.char8 >*< BP.char8 >*< BP.word16HexFixed
 {-# INLINE escapeAscii #-}
+--    BP.condB (== c2w '\x7d') (ascii2 ('\x7d','\x5d')) $
+--    BP.condB (== c2w '\x7e') (ascii2 ('\x7d','\x5e')) $
+--    BP.condB (== c2w '\n'  ) (ascii2 ('\x7d','\x2a')) $
 
 c2w :: Char -> Word8
 c2w c = fromIntegral (ord c)
@@ -133,16 +139,16 @@ c2w c = fromIntegral (ord c)
 -- | Encode a JSON number.
 scientific :: Scientific -> Builder
 scientific s
-    | e < 0 || e > 1024 = scientificBuilder s
-    | otherwise = B.integerDec (coefficient s * 10 ^ e)
+    | e < 0 || e > 1024 = scientificBuilder s <> B.char8 '"'
+    | otherwise = B.integerDec (coefficient s * 10 ^ e) <> B.char8 '"'
   where
     e = base10Exponent s
 
 emptyArray_ :: Builder
-emptyArray_ = BP.primBounded (ascii2 ('[',']')) ()
+emptyArray_ = B.char8 'A'
 
 emptyObject_ :: Builder
-emptyObject_ = BP.primBounded (ascii2 ('{','}')) ()
+emptyObject_ = B.char8 'O'
 
 ascii2 :: (Char, Char) -> BP.BoundedPrim a
 ascii2 cs = BP.liftFixedToBounded $ const cs BP.>$< BP.char7 >*< BP.char7
